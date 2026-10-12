@@ -1,6 +1,7 @@
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from typing import Optional
 import logging
+from typing import Optional
+import certifi
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.core.config import settings
 
 logger = logging.getLogger("uvicorn.error")
@@ -22,10 +23,21 @@ async def connect_to_mongo() -> None:
         uri = settings.MONGODB_URI or "mongodb://localhost:27017"
         display_uri = uri.split('@')[-1] if '@' in uri else 'local'
         logger.info(f"Connecting to MongoDB at {display_uri}...")
-        db_instance.client = AsyncIOMotorClient(
-            uri,
-            serverSelectionTimeoutMS=5000
-        )
+        
+        client_kwargs = {
+            "serverSelectionTimeoutMS": 5000,
+            "connectTimeoutMS": 5000,
+            "socketTimeoutMS": 10000,
+        }
+        
+        # In cloud serverless (AWS Lambda / Vercel), provide certifi CA bundle for Atlas TLS
+        if "mongodb+srv://" in uri or "tls=true" in uri.lower() or "ssl=true" in uri.lower():
+            try:
+                client_kwargs["tlsCAFile"] = certifi.where()
+            except Exception:
+                pass
+
+        db_instance.client = AsyncIOMotorClient(uri, **client_kwargs)
         db_instance.db = db_instance.client[settings.DATABASE_NAME]
         logger.info(f"Successfully selected MongoDB database: '{settings.DATABASE_NAME}'")
     except Exception as e:
@@ -57,6 +69,8 @@ async def ping_database() -> dict:
     """
     Check live connectivity to MongoDB database.
     """
+    if db_instance.client is None or db_instance.db is None:
+        await connect_to_mongo()
     if db_instance.client is None or db_instance.db is None:
         return {"connected": False, "error": "Database client not initialized"}
     try:
