@@ -1,13 +1,34 @@
 import os
 import uuid
+import tempfile
 from io import BytesIO
 from typing import Tuple, Dict, Any
 from fastapi import UploadFile, HTTPException, status
 from pypdf import PdfReader
 from app.core.config import settings
 
-UPLOAD_FOLDER = os.path.join(settings.UPLOAD_DIR, "resumes")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+def _get_upload_folder() -> str:
+    """
+    On Vercel or AWS Lambda, the root deployment directory (/var/task) is read-only.
+    The only writable location is /tmp (tempfile.gettempdir()).
+    """
+    is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+    if is_serverless or not os.access(".", os.W_OK):
+        folder = os.path.join(tempfile.gettempdir(), "uploads", "resumes")
+    else:
+        folder = os.path.join(settings.UPLOAD_DIR, "resumes")
+
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except OSError:
+        folder = os.path.join(tempfile.gettempdir(), "uploads", "resumes")
+        try:
+            os.makedirs(folder, exist_ok=True)
+        except OSError:
+            pass
+    return folder
+
+UPLOAD_FOLDER = _get_upload_folder()
 
 MAX_BYTES = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
@@ -64,9 +85,13 @@ async def process_resume_upload(file: UploadFile, user_id: str) -> Dict[str, Any
     safe_filename = f"resume_{user_id}_{uuid.uuid4().hex[:8]}.pdf"
     file_path = os.path.join(UPLOAD_FOLDER, safe_filename)
 
-    # 4. Save to persistent storage
-    with open(file_path, "wb") as f:
-        f.write(content)
+    # 4. Save to persistent storage (fallback gracefully if storage is read-only)
+    try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "wb") as f:
+            f.write(content)
+    except OSError:
+        pass
 
     # 5. Extract text for AI and eligibility search
     extracted_text = extract_text_from_pdf(content)

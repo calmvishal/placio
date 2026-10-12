@@ -1,7 +1,10 @@
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 from app.db.mongodb import connect_to_mongo, close_mongo_connection, ping_database, db_instance
 from app.db.init_db import init_database_indexes
 from app.api.auth import router as auth_router
