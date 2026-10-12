@@ -13,6 +13,12 @@
   },
   "rewrites": [
     {
+      "source": "/api",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
       "source": "/api/(.*)",
       "destination": {
         "service": "backend"
@@ -26,6 +32,12 @@
     },
     {
       "source": "/openapi.json",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/health",
       "destination": {
         "service": "backend"
       }

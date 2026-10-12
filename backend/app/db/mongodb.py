@@ -15,19 +15,21 @@ async def connect_to_mongo() -> None:
     """
     Establish asynchronous connection to MongoDB and select database.
     """
+    if db_instance.client is not None and db_instance.db is not None:
+        return
+
     try:
-        logger.info(f"Connecting to MongoDB at {settings.MONGODB_URI.split('@')[-1]}...")
+        uri = settings.MONGODB_URI or "mongodb://localhost:27017"
+        display_uri = uri.split('@')[-1] if '@' in uri else 'local'
+        logger.info(f"Connecting to MongoDB at {display_uri}...")
         db_instance.client = AsyncIOMotorClient(
-            settings.MONGODB_URI,
+            uri,
             serverSelectionTimeoutMS=5000
         )
-        # Verify connection with a ping
-        await db_instance.client.admin.command("ping")
         db_instance.db = db_instance.client[settings.DATABASE_NAME]
-        logger.info(f"Successfully connected to MongoDB database: '{settings.DATABASE_NAME}'")
+        logger.info(f"Successfully selected MongoDB database: '{settings.DATABASE_NAME}'")
     except Exception as e:
         logger.error(f"Failed to connect to MongoDB: {str(e)}")
-        # Do not crash the entire app; keep db as None so health endpoint can report disconnection
         db_instance.client = None
         db_instance.db = None
 
@@ -38,12 +40,17 @@ async def close_mongo_connection() -> None:
     if db_instance.client:
         logger.info("Closing MongoDB connection...")
         db_instance.client.close()
+        db_instance.client = None
+        db_instance.db = None
         logger.info("MongoDB connection closed.")
 
-def get_database() -> Optional[AsyncIOMotorDatabase]:
+async def get_database() -> Optional[AsyncIOMotorDatabase]:
     """
     Dependency helper to retrieve the active MongoDB database instance.
+    Automatically connects on-demand if running in serverless mode (Vercel).
     """
+    if db_instance.db is None or db_instance.client is None:
+        await connect_to_mongo()
     return db_instance.db
 
 async def ping_database() -> dict:

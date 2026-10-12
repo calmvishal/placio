@@ -22,18 +22,21 @@ async def lifespan(app: FastAPI):
     """
     Lifespan context manager to handle application startup and shutdown events cleanly.
     """
-    # 1. Startup: Connect to MongoDB and set up indexes
-    await connect_to_mongo()
-    if db_instance.db is not None:
-        try:
+    # 1. Startup: Connect to MongoDB and set up indexes safely
+    try:
+        await connect_to_mongo()
+        if db_instance.db is not None:
             await init_database_indexes(db_instance.db)
-        except Exception as e:
-            print(f"Index initialization warning: {e}")
+    except Exception as e:
+        logger.warning(f"Startup initialization notice: {e}")
     
     yield
     
     # 2. Shutdown: Close MongoDB connection gracefully
-    await close_mongo_connection()
+    try:
+        await close_mongo_connection()
+    except Exception:
+        pass
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -57,19 +60,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register API Routers
-app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(students_router, prefix="/api/students", tags=["Students"])
-app.include_router(jobs_router, prefix="/api/jobs", tags=["Placement Opportunities"])
-app.include_router(applications_router, prefix="/api/applications", tags=["Applications"])
-app.include_router(exports_router, prefix="/api/exports", tags=["Reports & Exports"])
-app.include_router(notifications_router, prefix="/api/notifications", tags=["Notifications"])
-app.include_router(interviews_router, prefix="/api/interviews", tags=["Interviews"])
-app.include_router(ai_router, prefix="/api/ai", tags=["Advisory AI"])
-app.include_router(analytics_router, prefix="/api/analytics", tags=["Placement Analytics"])
-app.include_router(courses_router, prefix="/api/courses", tags=["Courses & Branches"])
-app.include_router(staff_router, prefix="/api/staff", tags=["TPO Staff Management"])
-app.include_router(settings_router, prefix="/api/settings", tags=["Portal Settings"])
+# Register API Routers under both /api and root prefix for seamless proxy compatibility
+for prefix_base in ["/api", ""]:
+    app.include_router(auth_router, prefix=f"{prefix_base}/auth", tags=["Authentication"])
+    app.include_router(students_router, prefix=f"{prefix_base}/students", tags=["Students"])
+    app.include_router(jobs_router, prefix=f"{prefix_base}/jobs", tags=["Placement Opportunities"])
+    app.include_router(applications_router, prefix=f"{prefix_base}/applications", tags=["Applications"])
+    app.include_router(exports_router, prefix=f"{prefix_base}/exports", tags=["Reports & Exports"])
+    app.include_router(notifications_router, prefix=f"{prefix_base}/notifications", tags=["Notifications"])
+    app.include_router(interviews_router, prefix=f"{prefix_base}/interviews", tags=["Interviews"])
+    app.include_router(ai_router, prefix=f"{prefix_base}/ai", tags=["Advisory AI"])
+    app.include_router(analytics_router, prefix=f"{prefix_base}/analytics", tags=["Placement Analytics"])
+    app.include_router(courses_router, prefix=f"{prefix_base}/courses", tags=["Courses & Branches"])
+    app.include_router(staff_router, prefix=f"{prefix_base}/staff", tags=["TPO Staff Management"])
+    app.include_router(settings_router, prefix=f"{prefix_base}/settings", tags=["Portal Settings"])
 
 @app.get("/")
 def read_root():
@@ -82,6 +86,7 @@ def read_root():
     }
 
 @app.get("/api/health")
+@app.get("/health")
 async def health_check():
     """
     Health check endpoint verifying backend status, environment configuration,
