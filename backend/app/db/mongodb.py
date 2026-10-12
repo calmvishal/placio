@@ -20,14 +20,17 @@ async def connect_to_mongo() -> None:
         return
 
     try:
-        uri = settings.MONGODB_URI or "mongodb://localhost:27017"
+        uri = (settings.MONGODB_URI or "mongodb://localhost:27017").strip()
+        # Automatically strip placeholder angle brackets if user pasted <password>
+        import re
+        uri = re.sub(r':<([^@>]+)>@', r':\1@', uri)
         display_uri = uri.split('@')[-1] if '@' in uri else 'local'
         logger.info(f"Connecting to MongoDB at {display_uri}...")
         
         client_kwargs = {
-            "serverSelectionTimeoutMS": 5000,
-            "connectTimeoutMS": 5000,
-            "socketTimeoutMS": 10000,
+            "serverSelectionTimeoutMS": 10000,
+            "connectTimeoutMS": 10000,
+            "socketTimeoutMS": 20000,
         }
         
         # In cloud serverless (AWS Lambda / Vercel), provide certifi CA bundle for Atlas TLS
